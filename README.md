@@ -38,7 +38,7 @@ Before using the workflow, you need to configure two key settings in Alfred’s 
 
 ```bash
 ANSIBLE_PATH
-OUTPUT
+OUTPUT_MODE
 ```
 Open the workflow’s configuration editor in Alfred and fill in these fields to suit your preferences.
 
