@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>bundleid</key>
+	<string>com.s3y.ansible-runner</string>
+	<key>category</key>
+	<string>Productivity</string>
+	<key>connections</key>
+	<dict>
+		<key>0ED102FE-5C33-4C7F-89D8-2C48DC7D829D</key>
+		<array/>
+		<key>E460A73B-7643-4202-B077-0DC517396F32</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>0ED102FE-5C33-4C7F-89D8-2C48DC7D829D</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
+	</dict>
+	<key>createdby</key>
+	<string>David Yates</string>
+	<key>description</key>
+	<string>Runs your ansible playbooks from Alfred</string>
+	<key>disabled</key>
+	<false/>
+	<key>name</key>
+	<string>Ansible Runner</string>
+	<key>objects</key>
+	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>alfredfiltersresults</key>
+				<false/>
+				<key>alfredfiltersresultsmatchmode</key>
+				<integer>0</integer>
+				<key>argumenttreatemptyqueryasnil</key>
+				<true/>
+				<key>argumenttrimmode</key>
+				<integer>0</integer>
+				<key>argumenttype</key>
+				<integer>2</integer>
+				<key>escaping</key>
+				<integer>68</integer>
+				<key>keyword</key>
+				<string>ans</string>
+				<key>queuedelaycustom</key>
+				<integer>3</integer>
+				<key>queuedelayimmediatelyinitially</key>
+				<true/>
+				<key>queuedelaymode</key>
+				<integer>0</integer>
+				<key>queuemode</key>
+				<integer>1</integer>
+				<key>runningsubtext</key>
+				<string>Please wait....</string>
+				<key>script</key>
+				<string>#!/bin/bash
+# Use the user-supplied environment variable ANSIBLE_PATH
+if [ -z "$ANSIBLE_PATH" ]; then
+    echo '{ "items": [{ "title": "Error", "subtitle": "ANSIBLE_PATH is not set. Please configure it in the workflow settings.", "valid": "false", "icon": {"path": "icon.png"} }] }'
+    exit 1
+fi
+
+PLAYBOOK_DIR="$ANSIBLE_PATH"
+
+# Recursively find YAML files that contain "tasks:" and treat them as valid playbooks.
+PLAYBOOKS=()
+while IFS= read -r -d '' file; do
+    if grep -q "tasks:" "$file"; then
+        PLAYBOOKS+=("$file")
+    fi
+done &lt; &lt;(find "$PLAYBOOK_DIR" -type f -name "*.yml" -print0)
+
+echo '{ "items": ['
+
+if [ ${#PLAYBOOKS[@]} -eq 0 ]; then
+    cat &lt;&lt;EOF
+{
+    "title": "No playbooks found",
+    "subtitle": "Check your ANSIBLE_PATH: $PLAYBOOK_DIR",
+    "arg": "",
+    "valid": "false",
+    "icon": { "path": "icon.png" }
+}
+EOF
+else
+    first_item=1
+    for file in "${PLAYBOOKS[@]}"; do
+        playbook_name=$(basename "$file" .yml)
+        relative_path="${file#$PLAYBOOK_DIR/}"
+        if [ $first_item -eq 0 ]; then
+            echo ','
+        fi
+        first_item=0
+        cat &lt;&lt;EOF
+{
+    "title": "Run $playbook_name",
+    "subtitle": "$relative_path",
+    "arg": "$file",
+    "icon": { "path": "icon.png" }
+}
+EOF
+    done
+fi
+
+echo '] }'
+</string>
+				<key>scriptargtype</key>
+				<integer>0</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>subtext</key>
+				<string>Runs Ansible Playbooks</string>
+				<key>title</key>
+				<string>Ansible</string>
+				<key>type</key>
+				<integer>0</integer>
+				<key>withspace</key>
+				<false/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.input.scriptfilter</string>
+			<key>uid</key>
+			<string>E460A73B-7643-4202-B077-0DC517396F32</string>
+			<key>version</key>
+			<integer>3</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>concurrently</key>
+				<false/>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>script</key>
+				<string>#!/bin/bash
+# The playbook file path is passed as the first argument
+PLAYBOOK="$1"
+PLAYBOOK_NAME=$(basename "$PLAYBOOK")
+
+# Notify that the playbook is starting
+osascript -e "display notification \"Running playbook: $PLAYBOOK_NAME\" with title \"Playbook Execution\""
+
+# Run the playbook command and capture the output (both stdout and stderr)
+OUTPUT=$(ansible-playbook "$PLAYBOOK" 2&gt;&amp;1)
+RESULT=$?
+
+if [ $RESULT -eq 0 ]; then
+    osascript -e "display notification \"Playbook executed successfully\" with title \"Success\""
+else
+    osascript -e "display notification \"Error executing playbook\" with title \"Error\""
+fi
+
+# Determine the output mode. Use a default if not set.
+OUTPUT_MODE=${OUTPUT_MODE:-largetype}
+
+case "$OUTPUT_MODE" in
+    largetype)
+        # Output the result to Alfred, then use Large Type action (or a chained Alfred action).
+        echo "$OUTPUT"
+        ;;
+    editor)
+        # Save output to a temporary file and open in TextEdit (or another editor).
+        TMPFILE=$(mktemp /tmp/ansible_output.XXXXXX.txt)
+        echo "$OUTPUT" &gt; "$TMPFILE"
+        open -a "TextEdit" "$TMPFILE"
+        ;;
+    clipboard)
+        # Copy the output to clipboard
+        echo "$OUTPUT" | pbcopy
+        ;;
+    *)
+        # Fallback: just output to Alfred
+        echo "$OUTPUT"
+        ;;
+esac</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>type</key>
+				<integer>0</integer>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.action.script</string>
+			<key>uid</key>
+			<string>0ED102FE-5C33-4C7F-89D8-2C48DC7D829D</string>
+			<key>version</key>
+			<integer>2</integer>
+		</dict>
+	</array>
+	<key>readme</key>
+	<string>![Ansible Logo](./icon.png)
+
+# Ansible Playbook Runner for Alfred
+
+This workflow filters a list of ansible playbooks, and then runs the selected playbook - outputting to either large type, a default text editor or copies the output to clipboard.
+
+## Playbook Search
+This workflow scans your Ansible directory (and all subdirectories) for YAML files containing valid playbooks.
+
+It outputs either to:
+- "large type" (handy, but obnoxious, and you can't scroll the output...)
+- Opens in default editor (currently hardcoded to TextEdit)
+- Copies the output to clipboard
+
+## Execution with Feedback
+
+When you run a playbook, you get an initial notification indicating that the playbook is starting. When it's finished, you’ll see a success or error notification. Note that the actual ansible output isn't parsed, an error is only thrown if the playbook couldn't run for some reason.
+
+## Output Options:
+
+Choose how you want to view the playbook output:
+
+Large Type: Display the results in Alfred’s Large Type view.
+
+Editor: Open the results in your default text editor.
+
+Clipboard: Copy the output directly to your clipboard.
+
+## Installation
+
+### Download or Clone the Workflow
+
+Get the latest version of the workflow files and open them with Alfred.
+
+### Add to Alfred
+Drag and drop the workflow file into Alfred or use the import option in Alfred’s Workflows preferences.
+
+## Configuration
+
+Before using the workflow, you need to configure two key settings in Alfred’s built-in configuration editor:
+
+```bash
+ANSIBLE_PATH
+OUTPUT
+```
+Open the workflow’s configuration editor in Alfred and fill in these fields to suit your preferences.
+
+## Usage
+
+### Invoke the Workflow
+Use the designated keyword (set to 'ans') to activate the workflow in Alfred.
+
+### Browse Your Playbooks
+
+The workflow will display a list of all Ansible playbooks found in your configured directory. Each item shows the playbook name (prefixed with “Run:”) along with its relative location.
+
+### Run a Playbook
+
+Select a playbook from the list. An initial notification should appear, stating, "Running playbook: [Playbook Name]". The playbook is executed, and when it completes, you’ll receive a success or error notification.
+
+### View the Output
+Based on your OUTPUT_MODE setting, the output will be displayed in Large Type, opened in your text editor, or copied to your clipboard.
+
+## Customization
+
+### Modifying the Workflow
+If you’d like to adjust the behavior further (for example, parsing more details from your playbook output or tweaking notifications), feel free to modify the provided scripts.
+
+##Error Handling:
+The workflow checks if any playbooks are found in your specified directory and provides a message if none are detected, doesn't output if there was a problem with the actual ansible playbook, just if it had issues running it.
+
+## Troubleshooting
+
+### No playbooks Found
+Double-check that your ANSIBLE_PATH is correct and that your playbook files include a tasks: section.
+
+### Incorrect Output
+Verify your OUTPUT_MODE setting in the configuration editor to ensure it matches your preferred output method.
+
+### Notifications Not Appearing
+Ensure that your system notifications are enabled for Alfred and that you haven’t muted notification alerts.
+
+## License
+
+Feel free to distribute and modify this workflow as needed.</string>
+	<key>uidata</key>
+	<dict>
+		<key>0ED102FE-5C33-4C7F-89D8-2C48DC7D829D</key>
+		<dict>
+			<key>xpos</key>
+			<real>215</real>
+			<key>ypos</key>
+			<real>15</real>
+		</dict>
+		<key>E460A73B-7643-4202-B077-0DC517396F32</key>
+		<dict>
+			<key>xpos</key>
+			<real>30</real>
+			<key>ypos</key>
+			<real>15</real>
+		</dict>
+	</dict>
+	<key>userconfigurationconfig</key>
+	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string></string>
+				<key>placeholder</key>
+				<string>Path to your Ansible directory
+Path to your Ansible directory"
+Path to your Ansible directory</string>
+				<key>required</key>
+				<true/>
+				<key>trim</key>
+				<true/>
+			</dict>
+			<key>description</key>
+			<string>Enter the absolute path to your Ansible playbook directory. For example: /Users/yourname/ansible. This directory should contain all your playbook files (including those in nested folders).</string>
+			<key>label</key>
+			<string>Ansible Playbook Directory</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>ANSIBLE_PATH</string>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>editor</string>
+				<key>pairs</key>
+				<array>
+					<array>
+						<string>Large Type</string>
+						<string>largetype</string>
+					</array>
+					<array>
+						<string>Open In Editor</string>
+						<string>editor</string>
+					</array>
+					<array>
+						<string>Copy To Clipboard</string>
+						<string>clipboard</string>
+					</array>
+				</array>
+			</dict>
+			<key>description</key>
+			<string>Choose how you want the output of your ansible playbooks. Editor is defaulted to TextEdit</string>
+			<key>label</key>
+			<string>Choose Your Output</string>
+			<key>type</key>
+			<string>popupbutton</string>
+			<key>variable</key>
+			<string>OUTPUT_MODE</string>
+		</dict>
+	</array>
+	<key>variablesdontexport</key>
+	<array/>
+	<key>version</key>
+	<string>1.0.0</string>
+	<key>webaddress</key>
+	<string>https://oneforthecode.com</string>
+</dict>
+</plist>
